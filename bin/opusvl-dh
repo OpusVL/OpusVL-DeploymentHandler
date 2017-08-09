@@ -72,6 +72,10 @@ sub prepare {
     dh->prepare_deploy
 }
 
+sub deploy {
+    dh->deploy
+}
+
 =head1 SYNOPSIS
 
     opusvl-dh --help
