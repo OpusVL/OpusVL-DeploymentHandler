@@ -1,5 +1,8 @@
 #!perl
 
+# PODNAME: opusvl-dh
+# ABSTRACT: Manages your database with OpusVL::DeploymentHandler
+
 use strict;
 use warnings;
 use v5.20;
@@ -7,22 +10,20 @@ use v5.20;
 use OpusVL::DeploymentHandler;
 use Getopt::Long qw(:config gnu_getopt);
 use File::ShareDir qw/module_dir/;
+use Pod::Usage;
 
 my %option = (
     help => sub { pod2usage(verbose => 2) },
 );
+
 GetOptions(\%option, 
-    'target|t=s', 
     'help|h|?', 
-    'connection-info|c=s', 
+    'connection-string|c=s', 
     'user|u=s', 
     'password|p=s', 
-    'force|f',
-    'prepare|ddl',
+    'force-overwrite|f',
     'verbose|v',
     'deploy|d',
-    'dirty',
-    'use-moduledir',
 );
 
 my $schema = shift;
@@ -44,15 +45,19 @@ $despatch->{$cmd}->();
 
 sub schema () {
     state $s = $schema->connect({
-        dsn => $option{'connection-info'} // '',
+        dsn => $option{'connection-string'} // '',
         user => $option{'user'},
         password => $option{'password'},
     });
 }
 
+sub version() {
+    $schema->schema_version
+}
+
 sub dh {
     state $dh = OpusVL::DeploymentHandler->new({
-       force_overwrite => $option{force}, 
+       force_overwrite => $option{'force-overwrite'}, 
        schema => schema,
        script_directory => module_dir($schema) . '/sql',
        @_
@@ -62,6 +67,98 @@ sub dh {
 sub init {
     dh(force_overwrite => 1)->install_version_storage;
 }
+
 sub prepare {
     dh->prepare_deploy
 }
+
+=head1 SYNOPSIS
+
+    opusvl-dh --help
+    opusvl-dh I<SCHEMA> init
+    opusvl-dh I<SCHEMA> [-d] [-f] prepare
+    opusvl-dh I<SCHEMA> [-c DSN] [-u USER] [-p PASSWORD] deploy
+    opusvl-dh I<SCHEMA> [-c DSN] [-u USER] [-p PASSWORD] upgrade
+
+I<SCHEMA> will be the name of a module that extends L<DBIx::Class::Schema>.
+
+=head1 DESCRIPTION
+
+This is a super simple script that wraps up L<DBIx::Class::DeploymentHandler>,
+through the subclass L<OpusVL::DeploymentHandler>.
+
+That subclass stores the schema you're working with as well as the version it's
+on. This allows you to have more than one schema deployed into the same
+database.
+
+This script only supports four commands, and tries to do the right thing. If
+you've screwed up your database or code you might have to fix it manually.
+
+The script uses L<File::ShareDir> for the location to put the generated files.
+It will die if the directory doesn't exist because RESHACK hates you. You have
+to create it yourself.
+
+=head1 COMMANDS
+
+=over
+
+=item init
+
+This command currently requires a I<SCHEMA> because I'm too lazy to change the
+requirements. This deploys the version table to your database.
+
+=item prepare
+
+This prepares the SQL. If your version is 1, this prepares a deployment;
+otherwise, it prepares an upgrade.
+
+If you've done a silly and made your first real verson not version 1, you can
+use I<--deploy> (I<-d>) to force it to create a deployment even though it isn't
+version 1.
+
+=item deploy
+
+This finds the first deployment generated for the given I<SCHEMA>, and deploys
+it to the database. Then it records that I<SCHEMA> is at that version.
+
+=item upgrade
+
+This finds all upgrades between the current deployed version of I<SCHEMA> and the current version in code, and upgrades the database.
+
+=back
+
+=head1 OPTIONS
+
+=over
+
+=item -c
+
+=item --connection-string
+
+Provide the DSN with which to connect to the database
+
+=item -d
+
+=item --deploy
+
+Force I<prepare> to prepare a deployment
+
+=item -f
+
+=item --force-overwrite
+
+Force SQL and YAML to be overwritten (it doesn't tell you if it's avoiding doing
+this).
+
+=item -u
+
+=item --user
+
+Provide the user with which to connect to the database
+
+=item -p
+
+=item --password
+
+Provide the password with which to connect to the database
+
